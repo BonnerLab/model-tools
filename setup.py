@@ -7,8 +7,8 @@ with open('README.md') as readme_file:
     readme = readme_file.read()
 
 requirements = [
-    "brainio @ git+https://github.com/brain-score/brainio",
-    "brain-score @ git+https://github.com/brain-score/brain-score",
+    "brainio @ git+https://github.com/BonnerLab/brainio",
+    "brain-score @ git+https://github.com/BonnerLab/brain-score",
     "h5py",
     "Pillow",
     "numpy",
@@ -18,7 +18,7 @@ requirements = [
     "tensorflow==1.15",
     "keras==2.3.1",
     "scikit-learn",
-    "result_caching @ git+https://github.com/brain-score/result_caching",
+    "result_caching @ git+https://github.com/BonnerLab/result_caching",
 ]
 
 setup(
@@ -28,7 +28,7 @@ setup(
     long_description=readme,
     author="Martin Schrimpf",
     author_email='mschrimpf@mit.edu',
-    url='https://github.com/brain-score/model-tools',
+    url='https://github.com/BonnerLab/model-tools',
     packages=find_packages(exclude=['tests']),
     include_package_data=True,
     install_requires=requirements,

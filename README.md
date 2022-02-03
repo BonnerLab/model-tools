@@ -4,6 +4,10 @@
 
 Utility for generic models to interact with brain data.
 
+## Quick setup
+```
+pip install git+https://github.com/BonnerLab/model-tools
+```
 
 ## Environment variables
 
