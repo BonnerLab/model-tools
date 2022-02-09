@@ -25,9 +25,9 @@ class Defaults:
 
 class ActivationsExtractorHelper:
     def __init__(self, get_activations, preprocessing, identifier=None, batch_size=Defaults.batch_size):
-        """
+        '''
         :param identifier: an activations identifier for the stored results file. None to disable saving.
-        """
+        '''
         self._logger = logging.getLogger(fullname(self))
 
         self._batch_size = batch_size
@@ -38,19 +38,19 @@ class ActivationsExtractorHelper:
         self._batch_activations_hooks = {}
 
     def __call__(self, stimuli, layers, stimuli_identifier=None):
-        """
+        '''
         :param stimuli_identifier: a stimuli identifier for the stored results file. False to disable saving.
-        """
+        '''
         if isinstance(stimuli, StimulusSet):
             return self.from_stimulus_set(stimulus_set=stimuli, layers=layers, stimuli_identifier=stimuli_identifier)
         else:
             return self.from_paths(stimuli_paths=stimuli, layers=layers, stimuli_identifier=stimuli_identifier)
 
     def from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
-        """
+        '''
         :param stimuli_identifier: a stimuli identifier for the stored results file.
             False to disable saving. None to use `stimulus_set.identifier`
-        """
+        '''
         if stimuli_identifier is None:
             stimuli_identifier = stimulus_set.identifier
         for hook in self._stimulus_set_hooks.copy().values():  # copy to avoid stale handles
@@ -71,10 +71,12 @@ class ActivationsExtractorHelper:
         reduced_paths = self._reduce_paths(stimuli_paths)
 
         if not self.identifier or not stimuli_identifier:  # Clear saved file after obtaining activations
-            self._logger.debug(f"self.identifier `{self.identifier}` or stimuli_identifier {stimuli_identifier} "
-                               f"are not set, will not store")
+            self._logger.debug(f'self.identifier `{self.identifier}` or stimuli_identifier {stimuli_identifier} '
+                               f'are not set, will not store')
             clear_cache = True
             identifier = str(uuid.uuid4())  # Random identifier
+            self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+                               f'for all layers')
             activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
                                                 layers=layers, stimuli_paths=reduced_paths)
         else:  # Return existing activations and only recompute when needed
@@ -83,13 +85,18 @@ class ActivationsExtractorHelper:
             is_stored, layers_computed, layers_missing = stored_layers_overlap(identifier, stimuli_identifier, layers)
 
             if not is_stored:  # No existing activations stored. Need to compute them
+                self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+                                   f'for all layers')
                 activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
                                                     layers=layers, stimuli_paths=reduced_paths)
             elif len(layers_missing) == 0:  # We have all the required layers stored
+                self._logger.debug(f'Loading from storage: {function_identifier(identifier, stimuli_identifier)}')
                 activations = load_activations(identifier, stimuli_identifier)
                 if len(layers) < len(layers_computed):  # Only a subset of the stored layers have been requested
                     activations = activations.sel(neuroid=np.isin(activations.layer, layers))
             else:  # Compute the missing layers and add them to the stored file
+                self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+                                   f'for missing layers: {layers_missing}')
                 identifier_tmp = identifier + '-temp'
                 activations_tmp = self._get_activations(identifier=identifier_tmp,
                                                         stimuli_identifier=stimuli_identifier,
@@ -104,8 +111,11 @@ class ActivationsExtractorHelper:
 
         # Load activations into memory and clear up saved activations file, if caching not requested
         if clear_cache:
-            activations = activations.load()  # Note that this will run out of memory for many stimuli or activations
-            delete_activations_file(identifier, stimuli_identifier)
+            # Note that this will run out of memory for many stimuli or activations
+            try:
+                activations = activations.load()
+            finally:
+                delete_activations_file(identifier, stimuli_identifier)
 
         return activations
 
@@ -113,7 +123,7 @@ class ActivationsExtractorHelper:
         self._logger.info('Running stimuli')
 
         for batch_start in tqdm(range(0, len(stimuli_paths), self._batch_size),
-                                unit_scale=self._batch_size, desc="activations"):
+                                unit_scale=self._batch_size, desc='activations'):
             # Obtain the batch activations at each layer
             batch_end = min(batch_start + self._batch_size, len(stimuli_paths))
             batch_inputs = stimuli_paths[batch_start:batch_end]
@@ -148,28 +158,28 @@ class ActivationsExtractorHelper:
         return activations[{'stimulus_path': index}]
 
     def register_batch_activations_hook(self, hook):
-        r"""
+        r'''
         The hook will be called every time a batch of activations is retrieved.
         The hook should have the following signature::
 
             hook(batch_activations) -> batch_activations
 
         The hook should return new batch_activations which will be used in place of the previous ones.
-        """
+        '''
 
         handle = HookHandle(self._batch_activations_hooks)
         self._batch_activations_hooks[handle.id] = hook
         return handle
 
     def register_stimulus_set_hook(self, hook):
-        r"""
+        r'''
         The hook will be called every time before a stimulus set is processed.
         The hook should have the following signature::
 
             hook(stimulus_set) -> stimulus_set
 
         The hook should return a new stimulus_set which will be used in place of the previous one.
-        """
+        '''
 
         handle = HookHandle(self._stimulus_set_hooks)
         self._stimulus_set_hooks[handle.id] = hook
@@ -197,14 +207,14 @@ class ActivationsExtractorHelper:
     def _package(self, layer_activations, stimuli_paths) -> NeuroidAssembly:
         shapes = [a.shape for a in layer_activations.values()]
         self._logger.debug('Activations shapes: {}'.format(shapes))
-        self._logger.debug("Packaging individual layers")
+        self._logger.debug('Packaging individual layers')
         layer_assemblies = [self._package_layer(single_layer_activations, layer=layer, stimuli_paths=stimuli_paths) for
                             layer, single_layer_activations in tqdm(layer_activations.items(), desc='layer packaging')]
         # merge manually instead of using merge_data_arrays since `xarray.merge` is very slow with these large arrays
         # complication: (non)neuroid_coords are taken from the structure of layer_assemblies[0] i.e. the 1st assembly;
         # using these names/keys for all assemblies results in KeyError if the first layer contains flatten_coord_names
         # (see _package_layer) not present in later layers, e.g. first layer = conv, later layer = transformer layer
-        self._logger.debug("Merging layer assemblies")
+        self._logger.debug('Merging layer assemblies')
         model_assembly = np.concatenate([a.values for a in layer_assemblies],
                                         axis=layer_assemblies[0].dims.index('neuroid'))
         nonneuroid_coords = {coord: (dims, values) for coord, dims, values in walk_coords(layer_assemblies[0])
@@ -249,7 +259,7 @@ class ActivationsExtractorHelper:
                     **{coord: ('neuroid', values) for coord, values in flatten_coords.items()}},
             dims=['stimulus_path', 'neuroid']
         )
-        neuroid_id = [".".join([f"{value}" for value in values]) for values in zip(*[
+        neuroid_id = ['.'.join([f'{value}' for value in values]) for values in zip(*[
             layer_assembly[coord].values for coord in ['model', 'layer', 'neuroid_num']])]
         layer_assembly['neuroid_id'] = 'neuroid', neuroid_id
         return layer_assembly
@@ -331,9 +341,9 @@ def flatten(layer_output, return_index=False):
         return flattened
 
     def cartesian_product_broadcasted(*arrays):
-        """
+        '''
         http://stackoverflow.com/a/11146645/190597
-        """
+        '''
         broadcastable = np.ix_(*arrays)
         broadcasted = np.broadcast_arrays(*broadcastable)
         dtype = np.result_type(*arrays)
