@@ -9,6 +9,7 @@ from brainio.stimuli import StimulusSet
 from model_tools.activations import KerasWrapper, PytorchWrapper, TensorflowSlimWrapper
 from model_tools.activations.core import flatten
 from model_tools.activations.pca import LayerPCA
+from model_tools.activations.saving import merge_layer_activations_files
 
 
 def unique_preserved_order(a):
@@ -332,3 +333,11 @@ class TestFlatten:
         A_ = np.reshape(flattened, [flattened.shape[0], 256, 6, 6])
         assert A.shape == A_.shape
         assert (A == A_).all()
+
+
+@pytest.mark.parametrize(["a_size", "b_size"], [
+    (3, 12),
+    (pytorch_alexnet, 'AlexNet'),
+    (keras_vgg19, 'vgg19'),
+])
+def test_merge_layer_activation_files(a_size, b_size):

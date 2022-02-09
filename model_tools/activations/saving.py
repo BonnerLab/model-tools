@@ -43,7 +43,16 @@ def delete_activations_file(identifier: str, stimuli_identifier: str) -> None:
     os.remove(save_path)
 
 
-def merge_layer_activations_files(identifier: str, identifier_tmp: str, stimuli_identifier: str) -> NeuroidAssembly:
+def merge_layer_activations_files(identifier: str, identifier_tmp: str, stimuli_identifier: str,
+                                  mem_size: int = 51380224) -> NeuroidAssembly:
+    """
+    :param identifier:
+    :param identifier_tmp:
+    :param stimuli_identifier:
+    :param mem_size: How many stimuli X activations you would like to have loaded in memory at once.
+                     Defaults to number of activations in ResNet50 conv1 when passed a batch of 64 224x224 images.
+    :return: Lazily loaded assembly of activations across all merged layers
+    """
     save_path = activations_save_path(identifier, stimuli_identifier)
     save_path_tmp = activations_save_path(identifier_tmp, stimuli_identifier)
     assert os.path.exists(save_path)
@@ -65,8 +74,7 @@ def merge_layer_activations_files(identifier: str, identifier_tmp: str, stimuli_
         os.rename(save_path_tmp + '-', save_path)
 
     # Pick a batch size for traversing activations dimension
-    max_mem = 51380224          # Number of activations in ResNet50 conv1 when passed a batch of 64 224x224 images
-    batch_size = max([max_mem // num_stimuli, 1])
+    batch_size = max([mem_size // num_stimuli, 1])
 
     # Reopen the assembly file we'll be merging
     assembly_tmp = load_activations(identifier_tmp, stimuli_identifier)
