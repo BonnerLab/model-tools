@@ -1,4 +1,3 @@
-import copy
 import os
 import uuid
 
@@ -13,10 +12,8 @@ from tqdm import tqdm
 from brainio.assemblies import NeuroidAssembly, walk_coords
 from brainio.stimuli import StimulusSet
 from model_tools.utils import fullname
-from result_caching import store_xarray
 
-from model_tools.activations.saving import function_identifier, save_batch_activations, \
-    load_activations, delete_activations_file, stored_layers_overlap, merge_layer_activations_files
+from model_tools.activations.saving import LayerActivationsSaver
 
 
 class Defaults:
@@ -36,6 +33,7 @@ class ActivationsExtractorHelper:
         self.preprocess = preprocessing or (lambda x: x)
         self._stimulus_set_hooks = {}
         self._batch_activations_hooks = {}
+        self._saver = LayerActivationsSaver(self.from_paths)
 
     def __call__(self, stimuli, layers, stimuli_identifier=None):
         '''
@@ -75,34 +73,35 @@ class ActivationsExtractorHelper:
                                f'are not set, will not store')
             clear_cache = True
             identifier = str(uuid.uuid4())  # Random identifier
-            self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+            self._logger.debug(f'Running function: {self._saver.function_identifier(identifier, stimuli_identifier)} '
                                f'for all layers')
             activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
                                                 layers=layers, stimuli_paths=reduced_paths)
         else:  # Return existing activations and only recompute when needed
             clear_cache = False
             identifier = self.identifier
-            is_stored, layers_computed, layers_missing = stored_layers_overlap(identifier, stimuli_identifier, layers)
+            is_stored, layers_computed, layers_missing = \
+                self._saver.stored_layers_overlap(identifier, stimuli_identifier, layers)
 
             if not is_stored:  # No existing activations stored. Need to compute them
-                self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+                self._logger.debug(f'Running function: {self._saver.function_identifier(identifier, stimuli_identifier)} '
                                    f'for all layers')
                 activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
                                                     layers=layers, stimuli_paths=reduced_paths)
             elif len(layers_missing) == 0:  # We have all the required layers stored
-                self._logger.debug(f'Loading from storage: {function_identifier(identifier, stimuli_identifier)}')
-                activations = load_activations(identifier, stimuli_identifier)
+                self._logger.debug(f'Loading from storage: {self._saver.function_identifier(identifier, stimuli_identifier)}')
+                activations = self._saver.load_activations(identifier, stimuli_identifier)
                 if len(layers) < len(layers_computed):  # Only a subset of the stored layers have been requested
                     activations = activations.sel(neuroid=np.isin(activations.layer, layers))
             else:  # Compute the missing layers and add them to the stored file
-                self._logger.debug(f'Running function: {function_identifier(identifier, stimuli_identifier)} '
+                self._logger.debug(f'Running function: {self._saver.function_identifier(identifier, stimuli_identifier)} '
                                    f'for missing layers: {layers_missing}')
                 identifier_tmp = identifier + '-temp'
                 activations_tmp = self._get_activations(identifier=identifier_tmp,
                                                         stimuli_identifier=stimuli_identifier,
                                                         layers=layers_missing, stimuli_paths=reduced_paths)
                 del activations_tmp     # Points to a file that we'll be reading from in the function below, so close it
-                activations = merge_layer_activations_files(identifier, identifier_tmp, stimuli_identifier)
+                activations = self._saver.merge_layer_activations_files(identifier, identifier_tmp, stimuli_identifier)
                 if len(layers) < len(layers_missing) + len(layers_computed):  # Only a subset of the stored layers have been requested
                     activations = activations.sel(neuroid=np.isin(activations.layer, layers))
 
@@ -115,7 +114,7 @@ class ActivationsExtractorHelper:
             try:
                 activations = activations.load()
             finally:
-                delete_activations_file(identifier, stimuli_identifier)
+                self._saver.delete_activations_file(identifier, stimuli_identifier)
 
         return activations
 
