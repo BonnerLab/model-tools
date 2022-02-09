@@ -1,8 +1,6 @@
 import os
 from typing import List, Tuple
 
-import numpy as np
-
 from brainio.assemblies import NeuroidAssembly
 from result_caching import get_function_identifier
 
@@ -109,7 +107,7 @@ def stored_layers_overlap(identifier: str, stimuli_identifier: str, layers: List
         return False, [], layers
 
     assembly = load_activations(identifier, stimuli_identifier)
-    layers_computed = set(np.unique(assembly['layer']))
+    layers_computed = set(assembly['layer'].values)
     layers_missing = set(layers) - layers_computed
 
     return True, list(layers_computed), list(layers_missing)
