@@ -1,5 +1,6 @@
 import copy
 import os
+import uuid
 
 import functools
 import logging
@@ -14,15 +15,18 @@ from brainio.stimuli import StimulusSet
 from model_tools.utils import fullname
 from result_caching import store_xarray
 
+from model_tools.activations.saving import function_identifier, save_batch_activations, \
+    load_activations, delete_activations_file, stored_layers_overlap, merge_layer_activations_files
+
 
 class Defaults:
     batch_size = 64
 
 
 class ActivationsExtractorHelper:
-    def __init__(self, get_activations, preprocessing, identifier=False, batch_size=Defaults.batch_size):
+    def __init__(self, get_activations, preprocessing, identifier=None, batch_size=Defaults.batch_size):
         """
-        :param identifier: an activations identifier for the stored results file. False to disable saving.
+        :param identifier: an activations identifier for the stored results file. None to disable saving.
         """
         self._logger = logging.getLogger(fullname(self))
 
@@ -58,31 +62,79 @@ class ActivationsExtractorHelper:
 
     def from_paths(self, stimuli_paths, layers, stimuli_identifier=None):
         if layers is None:
-            layers = ['logits']
-        if self.identifier and stimuli_identifier:
-            fnc = functools.partial(self._from_paths_stored,
-                                    identifier=self.identifier, stimuli_identifier=stimuli_identifier)
-        else:
-            self._logger.debug(f"self.identifier `{self.identifier}` or stimuli_identifier {stimuli_identifier} "
-                               f"are not set, will not store")
-            fnc = self._from_paths
+            layers = ['logits']  # Output layer
+        layers = list(set(layers))  # Remove any duplicates
+
         # In case stimuli paths are duplicates (e.g. multiple trials), we first reduce them to only the paths that need
         # to be run individually, compute activations for those, and then expand the activations to all paths again.
         # This is done here, before storing, so that we only store the reduced activations.
         reduced_paths = self._reduce_paths(stimuli_paths)
-        activations = fnc(layers=layers, stimuli_paths=reduced_paths)
+
+        if not self.identifier or not stimuli_identifier:  # Clear saved file after obtaining activations
+            self._logger.debug(f"self.identifier `{self.identifier}` or stimuli_identifier {stimuli_identifier} "
+                               f"are not set, will not store")
+            clear_cache = True
+            identifier = str(uuid.uuid4())  # Random identifier
+            activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
+                                                layers=layers, stimuli_paths=reduced_paths)
+        else:  # Return existing activations and only recompute when needed
+            clear_cache = False
+            identifier = self.identifier
+            is_stored, layers_computed, layers_missing = stored_layers_overlap(identifier, stimuli_identifier, layers)
+
+            if not is_stored:  # No existing activations stored. Need to compute them
+                activations = self._get_activations(identifier=identifier, stimuli_identifier=stimuli_identifier,
+                                                    layers=layers, stimuli_paths=reduced_paths)
+            elif len(layers_missing) == 0:  # We have all the required layers stored
+                activations = load_activations(identifier, stimuli_identifier)
+                if len(layers) < len(layers_computed):  # Only a subset of the stored layers have been requested
+                    activations = activations.sel(neuroid=np.isin(activations.layer, layers))
+            else:  # Compute the missing layers and add them to the stored file
+                identifier_tmp = identifier + '-temp'
+                activations_tmp = self._get_activations(identifier=identifier_tmp,
+                                                        stimuli_identifier=stimuli_identifier,
+                                                        layers=layers_missing, stimuli_paths=reduced_paths)
+                del activations_tmp     # Points to a file that we'll be reading from in the function below, so close it
+                activations = merge_layer_activations_files(identifier, identifier_tmp, stimuli_identifier)
+                if len(layers) < len(layers_missing) + len(layers_computed):  # Only a subset of the stored layers have been requested
+                    activations = activations.sel(neuroid=np.isin(activations.layer, layers))
+
+        # Expand the activations to account for multiple trials
         activations = self._expand_paths(activations, original_paths=stimuli_paths)
+
+        # Load activations into memory and clear up saved activations file, if caching not requested
+        if clear_cache:
+            activations = activations.load()  # Note that this will run out of memory for many stimuli or activations
+            delete_activations_file(identifier, stimuli_identifier)
+
         return activations
 
-    @store_xarray(identifier_ignore=['stimuli_paths', 'layers'], combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, stimuli_paths):
-        return self._from_paths(layers=layers, stimuli_paths=stimuli_paths)
-
-    def _from_paths(self, layers, stimuli_paths):
+    def _get_activations(self, identifier, stimuli_identifier, layers, stimuli_paths):
         self._logger.info('Running stimuli')
-        layer_activations = self._get_activations_batched(stimuli_paths, layers=layers, batch_size=self._batch_size)
-        self._logger.info('Packaging into assembly')
-        return self._package(layer_activations, stimuli_paths)
+
+        for batch_start in tqdm(range(0, len(stimuli_paths), self._batch_size),
+                                unit_scale=self._batch_size, desc="activations"):
+            # Obtain the batch activations at each layer
+            batch_end = min(batch_start + self._batch_size, len(stimuli_paths))
+            batch_inputs = stimuli_paths[batch_start:batch_end]
+            batch_activations = self._get_batch_activations(batch_inputs,
+                                                            layer_names=layers,
+                                                            batch_size=self._batch_size)
+
+            # Apply any hooks to the batch activations (e.g. max pooling)
+            for hook in self._batch_activations_hooks.copy().values():  # copy to avoid handle re-enabling messing with the loop
+                batch_activations = hook(batch_activations)
+
+            # Package the batch activations as a NeuroidAssembly
+            batch_activations = self._package(batch_activations, stimuli_paths)
+
+            # Append the batch activations to an incrementally growing file on disk
+            save_batch_activations(batch_activations, identifier, stimuli_identifier)
+
+        # Lazily load all activations from disk
+        activations = load_activations(identifier, stimuli_identifier)
+
+        return activations
 
     def _reduce_paths(self, stimuli_paths):
         return list(set(stimuli_paths))
@@ -94,7 +146,6 @@ class ActivationsExtractorHelper:
         sorted_index = np.searchsorted(sorted_x, original_paths)
         index = [argsort_indices[i] for i in sorted_index]
         return activations[{'stimulus_path': index}]
-
 
     def register_batch_activations_hook(self, hook):
         r"""
@@ -124,23 +175,6 @@ class ActivationsExtractorHelper:
         self._stimulus_set_hooks[handle.id] = hook
         return handle
 
-    def _get_activations_batched(self, paths, layers, batch_size):
-        layer_activations = None
-        for batch_start in tqdm(range(0, len(paths), batch_size), unit_scale=batch_size, desc="activations"):
-            batch_end = min(batch_start + batch_size, len(paths))
-            batch_inputs = paths[batch_start:batch_end]
-            batch_activations = self._get_batch_activations(batch_inputs, layer_names=layers, batch_size=batch_size)
-            for hook in self._batch_activations_hooks.copy().values():  # copy to avoid handle re-enabling messing with the loop
-                batch_activations = hook(batch_activations)
-
-            if layer_activations is None:
-                layer_activations = copy.copy(batch_activations)
-            else:
-                for layer_name, layer_output in batch_activations.items():
-                    layer_activations[layer_name] = np.concatenate((layer_activations[layer_name], layer_output))
-
-        return layer_activations
-
     def _get_batch_activations(self, inputs, layer_names, batch_size):
         inputs, num_padding = self._pad(inputs, batch_size)
         preprocessed_inputs = self.preprocess(inputs)
@@ -160,7 +194,7 @@ class ActivationsExtractorHelper:
     def _unpad(self, layer_activations, num_padding):
         return change_dict(layer_activations, lambda values: values[:-num_padding or None])
 
-    def _package(self, layer_activations, stimuli_paths):
+    def _package(self, layer_activations, stimuli_paths) -> NeuroidAssembly:
         shapes = [a.shape for a in layer_activations.values()]
         self._logger.debug('Activations shapes: {}'.format(shapes))
         self._logger.debug("Packaging individual layers")
@@ -190,19 +224,21 @@ class ActivationsExtractorHelper:
                                                    dims=layer_assemblies[0].dims)
         return model_assembly
 
-    def _package_layer(self, layer_activations, layer, stimuli_paths):
+    def _package_layer(self, layer_activations, layer, stimuli_paths) -> NeuroidAssembly:
         assert layer_activations.shape[0] == len(stimuli_paths)
         activations, flatten_indices = flatten(layer_activations, return_index=True)  # collapse for single neuroid dim
         assert flatten_indices.shape[1] in [1, 2, 3]
         # see comment in _package for an explanation why we cannot simply have 'channel' for the FC layer
-        if flatten_indices.shape[1] == 1:    # FC
+        if flatten_indices.shape[1] == 1:  # FC
             flatten_coord_names = ['channel', 'channel_x', 'channel_y']
         elif flatten_indices.shape[1] == 2:  # Transformer
             flatten_coord_names = ['channel', 'embedding']
         elif flatten_indices.shape[1] == 3:  # 2DConv
             flatten_coord_names = ['channel', 'channel_x', 'channel_y']
-        flatten_coords = {flatten_coord_names[i]: [sample_index[i] if i < flatten_indices.shape[1] else np.nan for sample_index in flatten_indices]
-                          for i in range(len(flatten_coord_names))}
+        flatten_coords = {
+            flatten_coord_names[i]: [sample_index[i] if i < flatten_indices.shape[1] else np.nan for sample_index in
+                                     flatten_indices]
+            for i in range(len(flatten_coord_names))}
         layer_assembly = NeuroidAssembly(
             activations,
             coords={**{'stimulus_path': stimuli_paths,
