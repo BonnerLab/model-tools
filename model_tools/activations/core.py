@@ -138,10 +138,10 @@ class ActivationsExtractorHelper:
             batch_activations = self._package(batch_activations, stimuli_paths)
 
             # Append the batch activations to an incrementally growing file on disk
-            save_batch_activations(batch_activations, identifier, stimuli_identifier)
+            self._saver.save_batch_activations(batch_activations, identifier, stimuli_identifier)
 
         # Lazily load all activations from disk
-        activations = load_activations(identifier, stimuli_identifier)
+        activations = self._saver.load_activations(identifier, stimuli_identifier)
 
         return activations
 
@@ -300,15 +300,23 @@ def lstrip_local(path):
 
 
 def attach_stimulus_set_meta(assembly, stimulus_set):
+    # Make sure stimulus paths are correct
     stimulus_paths = [stimulus_set.get_image(image_id) for image_id in stimulus_set['image_id']]
     stimulus_paths = [lstrip_local(path) for path in stimulus_paths]
     assembly_paths = [lstrip_local(path) for path in assembly['stimulus_path'].values]
     assert (np.array(assembly_paths) == np.array(stimulus_paths)).all()
-    assembly['stimulus_path'] = stimulus_set['image_id'].values
-    assembly = assembly.rename({'stimulus_path': 'image_id'})
+
+    # Name the stimulus dimension 'presentation',
+    # make it a MultiIndex of ('image_id', 'stimulus-path'),
+    # and add any other metadata in the stimulus_set as additional coordinates
+    assembly = assembly.rename(stimulus_path='presentation')
+    assembly = assembly.reset_index('presentation')
+    assembly = assembly.rename(presentation_='stimulus_path')
+    assembly['image_id'] = 'presentation', stimulus_set['image_id'].values
     for column in stimulus_set.columns:
-        assembly[column] = 'image_id', stimulus_set[column].values
-    assembly = assembly.stack(presentation=('image_id',))
+        assembly[column] = 'presentation', stimulus_set[column].values
+    assembly = assembly.set_index(presentation=['image_id', 'stimulus_path'])
+
     return assembly
 
 
