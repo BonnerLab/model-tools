@@ -1,4 +1,5 @@
 import os
+import pathlib
 import uuid
 
 import functools
@@ -66,6 +67,7 @@ class ActivationsExtractorHelper:
         # In case stimuli paths are duplicates (e.g. multiple trials), we first reduce them to only the paths that need
         # to be run individually, compute activations for those, and then expand the activations to all paths again.
         # This is done here, before storing, so that we only store the reduced activations.
+        stimuli_paths = paths_to_strings(stimuli_paths)     # Convert any Path datatypes to strings
         reduced_paths = self._reduce_paths(stimuli_paths)
 
         if not self.identifier or not stimuli_identifier:  # Clear saved file after obtaining activations
@@ -135,7 +137,7 @@ class ActivationsExtractorHelper:
                 batch_activations = hook(batch_activations)
 
             # Package the batch activations as a NeuroidAssembly
-            batch_activations = self._package(batch_activations, stimuli_paths)
+            batch_activations = self._package(batch_activations, batch_inputs)
 
             # Append the batch activations to an incrementally growing file on disk
             self._saver.save_batch_activations(batch_activations, identifier, stimuli_identifier)
@@ -287,6 +289,15 @@ def change_dict(d, change_function, keep_name=False, multithread=False):
     if multithread:
         pool.close()
     return results
+
+
+def paths_to_strings(paths):
+    if len(paths) == 0 or isinstance(paths[0], str):
+        return paths
+    elif isinstance(paths[0], pathlib.Path):
+        return [str(path) for path in paths]
+    else:
+        raise ValueError(f'"paths" elements must be of type str of Path, but were of type: {type(paths[0])}')
 
 
 def lstrip_local(path):

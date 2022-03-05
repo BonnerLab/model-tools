@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from mock import patch
 
 from brainio.stimuli import StimulusSet
 from model_tools.activations import PytorchWrapper
@@ -36,6 +37,7 @@ def pytorch_custom():
     return PytorchWrapper(model=MyModel(), preprocessing=preprocessing)
 
 
+@patch.dict(os.environ, {'RESULTCACHING_HOME': str(Path(__file__).parent / 'result_caching')})
 class TestLayerSelection:
     @pytest.mark.parametrize(['model_ctr', 'layers', 'expected_layer', 'region'],
                              [(pytorch_custom, ['linear', 'relu2'], 'relu2', 'IT')])
@@ -50,6 +52,7 @@ class TestLayerSelection:
         assert set(predictions['layer'].values) == {expected_layer}
 
 
+@patch.dict(os.environ, {'RESULTCACHING_HOME': str(Path(__file__).parent / 'result_caching')})
 class TestLayerMappedModel:
     @pytest.mark.parametrize(['model_ctr', 'layers', 'region'], [
         (pytorch_custom, 'relu2', 'IT'),

@@ -1,6 +1,7 @@
 import os
 from typing import List, Tuple
 
+import xarray as xr
 from brainio.assemblies import NeuroidAssembly
 from result_caching import get_function_identifier
 
@@ -35,7 +36,7 @@ class LayerActivationsSaver:
         # Lazily load activations and convert them to a NeuroidAssembly
         save_path = self.activations_save_path(identifier, stimuli_identifier)
         assert os.path.exists(save_path)
-        return NeuroidAssembly(from_file=save_path)
+        return NeuroidAssembly(lazy_da=xr.open_dataarray(save_path))
 
     def delete_activations_file(self, identifier: str, stimuli_identifier: str) -> None:
         # Used to clear activations after computing them if user didn't want them cached,
