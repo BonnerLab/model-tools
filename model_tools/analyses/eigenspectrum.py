@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 import xarray as xr
@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 
 from brainio.assemblies import NeuroidAssembly
 from result_caching import store_xarray
+from model_tools.utils.pca import IncrementalPCAPytorch
 from . import ModelActivationsAnalysis
 
 
@@ -20,11 +21,12 @@ class ModelEigspecAnalysis(ModelActivationsAnalysis):
 
     @property
     def results(self) -> xr.DataArray:
-        layer_results = xr.concat(self._layer_results.values(), dim='identifier')
-        layer_results['identifier'] = [self.identifier] * layer_results.sizes['identifier']
-        layer_results['layer'] = ('identifier', list(layer_results.keys()))
-        for name, data in self.metadata:
-            layer_results[name] = ('identifier', [data] * layer_results.sizes['identifier'])
+        layer_results, layers = self._layer_results.values(), list(self._layer_results.keys())
+        layer_results = xr.concat(layer_results, dim='identifier')
+        layer_results['identifier'] = [self.identifier] * len(layers)
+        layer_results['layer'] = ('identifier', layers)
+        for name, data in self.metadata.items():
+            layer_results[name] = ('identifier', [data] * len(layers))
         return layer_results
 
 
@@ -36,8 +38,11 @@ def get_eigspec(assembly: NeuroidAssembly,
         S = torch.linalg.svdvals(assembly - assembly.mean(dim=0))
         eigspec = S ** 2 / (assembly.shape[0] - 1)
     else:
-        # todo: use an incremental PCA approach
-        pass
+        pca = IncrementalPCAPytorch(device=device)
+        for i in range(0, assembly.shape[0], batch_size):
+            assembly_batch = torch.from_numpy(assembly[i:i + batch_size].values).to(device)
+            pca.fit_partial(assembly_batch)
+        eigspec = pca.explained_variance
 
     eigspec = eigspec.cpu().numpy()
     ed = effective_dimensionalities(eigspec)
@@ -53,7 +58,7 @@ def get_eigspec(assembly: NeuroidAssembly,
     return eigspec
 
 
-@store_xarray(identifier_ignore=['assembly', 'batch_size', 'device'])
+@store_xarray(identifier_ignore=['assembly', 'batch_size', 'device'], combine_fields=[])
 def get_eigspec_stored(identifier: str,
                        assembly: NeuroidAssembly,
                        batch_size: Optional[int] = None,
