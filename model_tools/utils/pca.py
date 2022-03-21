@@ -29,7 +29,6 @@ class IncrementalPCAPytorch:
         self.singular_values = None
         self.noise_variance = None
 
-
     def fit_partial(self, X: torch.Tensor) -> None:
         X = X.to(self.device)
         if not self._initialized:
@@ -74,7 +73,6 @@ class IncrementalPCAPytorch:
         else:
             self.noise_variance = 0.0
 
-
     def _initialize_from(self, X: torch.Tensor):
         assert X.ndim == 2
 
@@ -93,7 +91,6 @@ class IncrementalPCAPytorch:
         self.components = torch.zeros(self.n_components, n_feats).to(self.device)
 
         self._initialized = True
-
 
     def _incremental_mean_and_var(self, X: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, int]:
         X_sum = X.sum(dim=0)
@@ -119,6 +116,17 @@ class IncrementalPCAPytorch:
         new_var = new_unnormalized_var / new_n_samples_seen
 
         return new_mean, new_var, new_n_samples_seen
+
+    def transform(self, X: torch.Tensor):
+        """
+        https://github.com/scikit-learn/scikit-learn/blob/37ac6788c9504ee409b75e5e24ff7d86c90c2ffb/sklearn/decomposition/_base.py#L97
+        """
+        if self.mean is not None:
+            X = X - self.mean
+        X_transformed = torch.matmul(X, self.components.transpose(0, 1))
+        if self.whiten:
+            X_transformed /= torch.sqrt(self.explained_variance)
+        return X_transformed
 
 
 def svd_flip(u, v, u_based_decision=True):

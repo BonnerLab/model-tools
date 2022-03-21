@@ -1,6 +1,7 @@
 import functools
-import os; os.environ['RESULTCACHING_HOME'] = str(Path(__file__).parent / 'result_caching')
 from pathlib import Path
+import os; os.environ['RESULTCACHING_HOME'] = str(Path(__file__).parent / 'result_caching')
+from unittest.mock import patch
 
 import numpy as np
 import pytest
