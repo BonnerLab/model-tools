@@ -53,7 +53,7 @@ class LayerPCA:
         self.handle.enable()
 
         self._logger.debug('Computing ImageNet principal components')
-        progress = tqdm(total=len(imagenet_activations), desc="layer principal components")
+        progress = tqdm(total=len(imagenet_activations), desc="layer principal components", leave=False)
 
         def init_and_progress(layer, activations):
             activations = flatten(activations)

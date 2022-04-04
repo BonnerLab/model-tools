@@ -42,7 +42,7 @@ def get_eigspec(assembly: NeuroidAssembly,
         for i in range(0, assembly.shape[0], batch_size):
             assembly_batch = torch.from_numpy(assembly[i:i + batch_size].values).to(device)
             pca.fit_partial(assembly_batch)
-        eigspec = pca.explained_variance
+        eigspec = pca.explained_variance_
 
     eigspec = eigspec.cpu().numpy()
     ed = effective_dimensionalities(eigspec)
