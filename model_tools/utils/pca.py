@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -71,20 +71,20 @@ class PCAPytorch(_BasePCAPytorch):
     """
     def __init__(
         self,
-        n_components=None,
+        n_components: int = None,
         *,
-        device=None,
-        whiten=False,
-        tol=0.0,
+        device: Union[str, torch.device] = None,
+        whiten: bool = False,
+        tol: float = 0.0,
     ):
         self.n_components = n_components
         self.whiten = whiten
         self.tol = tol
         self.device = device
 
-    def fit(self, X):
+    def fit(self, X: torch.Tensor) -> None:
         self.n_samples_, self.n_features_ = X.shape
-    
+
         X = X.to(self.device)
         self.mean_ = torch.mean(X, dim=0)
 
@@ -112,18 +112,18 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         self.whiten = whiten
         self.device = device
 
-        self._initialized = False
-        self._batch_size = None
-        self._n_feats = None
+        self._initialized: bool = False
+        self._batch_size: int = None
+        self._n_feats: int = None
 
-        self.mean_ = None
-        self.var_ = None
-        self.n_samples_seen_ = None
-        self.components_ = None
-        self.explained_variance_ = None
-        self.explained_variance_ratio_ = None
-        self.singular_values_ = None
-        self.noise_variance_ = None
+        self.mean_: torch.Tensor = None
+        self.var_: torch.Tensor = None
+        self.n_samples_seen_: int = None
+        self.components_: torch.Tensor = None
+        self.explained_variance_: torch.Tensor = None
+        self.explained_variance_ratio_: torch.Tensor = None
+        self.singular_values_: torch.Tensor = None
+        self.noise_variance_: torch.Tensor = None
 
     def fit_partial(self, X: torch.Tensor) -> None:
         X = X.to(self.device)
@@ -169,7 +169,7 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         else:
             self.noise_variance_ = 0.0
 
-    def _initialize_from(self, X: torch.Tensor):
+    def _initialize_from(self, X: torch.Tensor) -> None:
         assert X.ndim == 2
 
         batch_size, n_feats = X.shape
@@ -214,7 +214,7 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         return new_mean, new_var, new_n_samples_seen
 
 
-def svd_flip(u, v, u_based_decision=True):
+def svd_flip(u: torch.Tensor, v: torch.Tensor, u_based_decision: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
     """Sign correction to ensure deterministic output from SVD."""
     if u_based_decision:
         max_abs_cols = torch.argmax(torch.abs(u), dim=0)

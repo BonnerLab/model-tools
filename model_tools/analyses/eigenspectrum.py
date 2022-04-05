@@ -94,6 +94,11 @@ def powerlaw_exponent(eigspec: np.ndarray) -> float:
     eigspec = eigspec[eignum - 1]
     logeignum = np.log10(eignum)
     logeigspec = np.log10(eigspec)
+
+    # remove infs when eigenvalues are too small
+    filter_ = ~np.isinf(logeigspec)
+    logeignum = logeignum[filter_]
+    logeigspec = logeigspec[filter_]
     linear_fit = LinearRegression().fit(logeignum.reshape(-1, 1), logeigspec)
     alpha = -linear_fit.coef_.item()
     return alpha
