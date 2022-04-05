@@ -1,5 +1,6 @@
 import logging
 import os
+from random import random
 
 import h5py
 import numpy as np
@@ -52,17 +53,15 @@ class LayerPCA:
         self.handle.enable()
 
         self._logger.debug('Computing ImageNet principal components')
-        progress = tqdm(total=len(imagenet_activations), desc="layer principal components")
+        progress = tqdm(total=len(imagenet_activations), desc="layer principal components", leave=False)
 
         def init_and_progress(layer, activations):
             activations = flatten(activations)
             if activations.shape[1] <= n_components:
-                self._logger.debug(f"Not computing principal components for {layer} "
-                                   f"activations {activations.shape} as shape is small enough already")
-                pca = None
+                pca = PCA(n_components=activations.shape[1], random_state=0)
             else:
                 pca = PCA(n_components=n_components, random_state=0)
-                pca.fit(activations)
+            pca.fit(activations)
             progress.update(1)
             return pca
 

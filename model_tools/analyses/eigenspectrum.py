@@ -42,7 +42,7 @@ def get_eigspec(assembly: NeuroidAssembly,
         for i in range(0, assembly.shape[0], batch_size):
             assembly_batch = torch.from_numpy(assembly[i:i + batch_size].values).to(device)
             pca.fit_partial(assembly_batch)
-        eigspec = pca.explained_variance
+        eigspec = pca.explained_variance_
 
     eigspec = eigspec.cpu().numpy()
     ed = effective_dimensionalities(eigspec)
@@ -94,6 +94,11 @@ def powerlaw_exponent(eigspec: np.ndarray) -> float:
     eigspec = eigspec[eignum - 1]
     logeignum = np.log10(eignum)
     logeigspec = np.log10(eigspec)
+
+    # remove infs when eigenvalues are too small
+    filter_ = ~np.isinf(logeigspec)
+    logeignum = logeignum[filter_]
+    logeigspec = logeigspec[filter_]
     linear_fit = LinearRegression().fit(logeignum.reshape(-1, 1), logeigspec)
     alpha = -linear_fit.coef_.item()
     return alpha

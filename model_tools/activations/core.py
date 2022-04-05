@@ -124,7 +124,7 @@ class ActivationsExtractorHelper:
         self._logger.info('Running stimuli')
 
         for batch_start in tqdm(range(0, len(stimuli_paths), self._batch_size),
-                                unit_scale=self._batch_size, desc='activations'):
+                                unit_scale=self._batch_size, desc='activations', leave=False):
             # Obtain the batch activations at each layer
             batch_end = min(batch_start + self._batch_size, len(stimuli_paths))
             batch_inputs = stimuli_paths[batch_start:batch_end]
@@ -210,7 +210,7 @@ class ActivationsExtractorHelper:
         self._logger.debug('Activations shapes: {}'.format(shapes))
         self._logger.debug('Packaging individual layers')
         layer_assemblies = [self._package_layer(single_layer_activations, layer=layer, stimuli_paths=stimuli_paths) for
-                            layer, single_layer_activations in tqdm(layer_activations.items(), desc='layer packaging')]
+                            layer, single_layer_activations in tqdm(layer_activations.items(), desc='layer packaging', leave=False)]
         # merge manually instead of using merge_data_arrays since `xarray.merge` is very slow with these large arrays
         # complication: (non)neuroid_coords are taken from the structure of layer_assemblies[0] i.e. the 1st assembly;
         # using these names/keys for all assemblies results in KeyError if the first layer contains flatten_coord_names

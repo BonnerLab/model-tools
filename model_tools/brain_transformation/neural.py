@@ -43,7 +43,7 @@ class LayerMappedModel(BrainModel):
         if task != BrainModel.Task.passive:
             raise NotImplementedError()
 
-    def start_recording(self, recording_target: BrainModel.RecordingTarget):
+    def start_recording(self, recording_target: BrainModel.RecordingTarget, *args, **kwargs):
         self.recorded_regions = [recording_target]
 
     def visual_degrees(self) -> int:
@@ -111,7 +111,7 @@ class LayerScores:
     def _call(self, model_identifier, benchmark_identifier, visual_degrees,  # storage fields
               model, benchmark, layers, prerun=False):
         layer_scores = []
-        for i, layer in enumerate(tqdm(layers, desc="layers")):
+        for i, layer in enumerate(tqdm(layers, desc="layers", leave=False)):
             layer_model = self._create_mapped_model(region=benchmark.region, layer=layer, model=model,
                                                     model_identifier=model_identifier, visual_degrees=visual_degrees)
             layer_model = TemporalIgnore(layer_model)
