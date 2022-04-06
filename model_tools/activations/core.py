@@ -269,7 +269,7 @@ class ActivationsExtractorHelper:
         if self.identifier is None:
             return None
         identifier = self.identifier
-        for hook in self._batch_activations_hooks:
+        for hook in self._batch_activations_hooks.values():
             if hook.identifier != '':
                 identifier += f'-{hook.identifier}'
         return identifier
