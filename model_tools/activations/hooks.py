@@ -137,7 +137,7 @@ class LayerPCA(LayerHookBase):
         activations = flatten(activations)
         if pca is None:
             return activations
-        return pca.transform(activations)
+        return pca.transform(torch.from_numpy(activations).to(self._device))
 
     def _ensure_initialized(self, layers):
         missing_layers = [layer for layer in layers if layer not in self._layer_pcas]
