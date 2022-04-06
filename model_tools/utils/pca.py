@@ -93,6 +93,8 @@ class PCAPytorch(_BasePCAPytorch):
 
     def fit(self, X: torch.Tensor) -> None:
         self.n_samples_, self.n_features_ = X.shape
+        if self.n_components_ is None:
+            self.n_components_ = min(self.n_samples_, self.n_features_)
 
         X = X.to(self.device)
         self.mean_ = torch.mean(X, dim=0)
@@ -119,7 +121,7 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
     https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.IncrementalPCA.html
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super(IncrementalPCAPytorch, self).__init__(*args, **kwargs)
 
         self._initialized: bool = False
@@ -161,12 +163,12 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         self.var_ = new_var
         self.n_samples_seen_ = new_n_samples_seen
 
-        self.components_ = Vt[:self.n_components]
-        self.singular_values_ = S[:self.n_components]
-        self.explained_variance_ = explained_variance[:self.n_components]
-        self.explained_variance_ratio_ = explained_variance_ratio[:self.n_components]
-        if self.n_components < n_feats:
-            self.noise_variance_ = explained_variance[self.n_components:].mean()
+        self.components_ = Vt[:self.n_components_]
+        self.singular_values_ = S[:self.n_components_]
+        self.explained_variance_ = explained_variance[:self.n_components_]
+        self.explained_variance_ratio_ = explained_variance_ratio[:self.n_components_]
+        if self.n_components_ < n_feats:
+            self.noise_variance_ = explained_variance[self.n_components_:].mean()
         else:
             self.noise_variance_ = 0.0
 
@@ -175,17 +177,17 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
 
         batch_size, n_feats = X.shape
         if self.n_components_ is None:
-            self.n_components = min(batch_size, n_feats)
+            self.n_components_ = min(batch_size, n_feats)
         else:
-            assert 1 <= self.n_components <= min(batch_size, n_feats)
+            assert 1 <= self.n_components_ <= min(batch_size, n_feats)
         self._batch_size, self.n_features_ = batch_size, n_feats
 
         self.mean_ = torch.zeros(n_feats).to(self.device)
         self.var_ = torch.zeros(n_feats).to(self.device)
         self.n_samples_seen_ = 0
 
-        self.singular_values_ = torch.zeros(self.n_components).to(self.device)
-        self.components_ = torch.zeros(self.n_components, n_feats).to(self.device)
+        self.singular_values_ = torch.zeros(self.n_components_).to(self.device)
+        self.components_ = torch.zeros(self.n_components_, n_feats).to(self.device)
 
         self._initialized = True
 
@@ -204,11 +206,11 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         last_unnormalized_var = self.var_ * self.n_samples_seen_
         last_over_new_n_samples = max(self.n_samples_seen_ / X_n_samples, 1e-7)
         new_unnormalized_var = (
-                last_unnormalized_var
-                + X_unnormalized_var
-                + last_over_new_n_samples
-                / new_n_samples_seen
-                * (last_sum / last_over_new_n_samples - X_sum) ** 2
+            last_unnormalized_var
+            + X_unnormalized_var
+            + last_over_new_n_samples
+            / new_n_samples_seen
+            * (last_sum / last_over_new_n_samples - X_sum) ** 2
         )
         new_var = new_unnormalized_var / new_n_samples_seen
 
