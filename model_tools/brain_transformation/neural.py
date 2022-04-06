@@ -5,7 +5,7 @@ from typing import Optional, Union
 from brainscore.metrics import Score
 from brainscore.model_interface import BrainModel
 from brainscore.utils import fullname
-from model_tools.activations.pca import LayerPCA
+from model_tools.activations.hooks import LayerPCA
 from model_tools.brain_transformation import TemporalIgnore
 from model_tools.utils import make_list
 from result_caching import store_xarray, store
@@ -68,19 +68,16 @@ class LayerSelection:
         pca_hooked = LayerPCA.is_hooked(self._layer_scoring._activations_model)
         if not pca_hooked:
             pca_handle = LayerPCA.hook(self._layer_scoring._activations_model, n_components=1000)
-            identifier = self._layer_scoring._activations_model.identifier
-            self._layer_scoring._activations_model.identifier = identifier + "-pca_1000"
-            model_identifier += "-pca_1000"
+            model_identifier = self._layer_scoring._activations_model.identifier + '-pca_1000'
 
         result = self._call(model_identifier=model_identifier, selection_identifier=selection_identifier,
                             benchmark=benchmark)
 
         if not pca_hooked:
             pca_handle.remove()
-            self._layer_scoring._activations_model.identifier = identifier
         return result
 
-    @store(identifier_ignore=['benchmark', 'benchmark'])
+    @store(identifier_ignore=['benchmark'])
     def _call(self, model_identifier, selection_identifier, benchmark):
         self._logger.debug("Finding best layer")
         layer_scores = self._layer_scoring(benchmark=benchmark, benchmark_identifier=selection_identifier,

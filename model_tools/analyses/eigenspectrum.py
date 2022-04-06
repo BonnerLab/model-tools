@@ -7,7 +7,7 @@ from sklearn.linear_model import LinearRegression
 
 from brainio.assemblies import NeuroidAssembly
 from result_caching import store_xarray
-from model_tools.utils.pca import IncrementalPCAPytorch
+from model_tools.utils.pca import IncrementalPCAPytorch, PCAPytorch
 from . import ModelActivationsAnalysis
 
 
@@ -34,15 +34,15 @@ def get_eigspec(assembly: NeuroidAssembly,
                 batch_size: Optional[int] = None,
                 device=None) -> xr.DataArray:
     if batch_size is None:
+        pca = PCAPytorch(device=device)
         assembly = torch.from_numpy(assembly.values).to(device)
-        S = torch.linalg.svdvals(assembly - assembly.mean(dim=0))
-        eigspec = S ** 2 / (assembly.shape[0] - 1)
+        pca.fit(assembly)
     else:
         pca = IncrementalPCAPytorch(device=device)
         for i in range(0, assembly.shape[0], batch_size):
             assembly_batch = torch.from_numpy(assembly[i:i + batch_size].values).to(device)
             pca.fit_partial(assembly_batch)
-        eigspec = pca.explained_variance_
+    eigspec = pca.explained_variance_
 
     eigspec = eigspec.cpu().numpy()
     ed = effective_dimensionalities(eigspec)

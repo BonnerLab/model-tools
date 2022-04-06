@@ -81,7 +81,7 @@ class ActivationsExtractorHelper:
                                                 layers=layers, stimuli_paths=reduced_paths)
         else:  # Return existing activations and only recompute when needed
             clear_cache = False
-            identifier = self.identifier
+            identifier = self._add_hook_identifiers()
             is_stored, layers_computed, layers_missing = \
                 self._saver.stored_layers_overlap(identifier, stimuli_identifier, layers)
 
@@ -264,6 +264,16 @@ class ActivationsExtractorHelper:
             layer_assembly[coord].values for coord in ['model', 'layer', 'neuroid_num']])]
         layer_assembly['neuroid_id'] = 'neuroid', neuroid_id
         return layer_assembly
+
+    def _add_hook_identifiers(self):
+        if self.identifier is None:
+            return None
+        identifier = self.identifier
+        for hook in self._batch_activations_hooks:
+            if hook.identifier != '':
+                identifier += f'-{hook.identifier}'
+        return identifier
+
 
     def insert_attrs(self, wrapper):
         wrapper.from_stimulus_set = self.from_stimulus_set

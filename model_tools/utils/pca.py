@@ -10,6 +10,25 @@ class _BasePCAPytorch:
     https://github.com/scikit-learn/scikit-learn/blob/37ac6788c9504ee409b75e5e24ff7d86c90c2ffb/sklearn/decomposition/_base.py#L19
     """
 
+    def __init__(self,
+                 n_components: int = None,
+                 *,
+                 device: Optional[Union[str, torch.device]] = None,
+                 whiten: bool = False):
+        self.n_components_ = n_components
+        self.whiten = whiten
+        self.device = device
+
+        self.components_ = None
+        self.explained_variance_ = None
+        self.explained_variance_ratio_ = None
+        self.singular_values_ = None
+        self.noise_variance_ = None
+        self.mean_ = None
+        self.var_ = None
+        self.n_samples_ = None
+        self.n_features_ = None
+
     def get_covariance(self) -> torch.Tensor:
         components_ = self.components_
         exp_var = self.explained_variance_
@@ -20,14 +39,13 @@ class _BasePCAPytorch:
         cov.flatten()[:: len(cov) + 1] += self.noise_variance_  # modify diag inplace
         return cov
 
-
     def get_precision(self) -> torch.Tensor:
         n_features = self.components_.shape[1]
 
         # get precision using matrix inversion lemma
         if self.n_components_ == 0:
             return torch.eye(n_features) / self.noise_variance_
-        if self.n_components == n_features:
+        if self.n_components_ == n_features:
             return torch.linalg.inv(self.get_covariance())
 
         # Get precision using matrix inversion lemma
@@ -54,12 +72,15 @@ class _BasePCAPytorch:
     def inverse_transform(self, X: torch.Tensor, n_components: int = None) -> torch.Tensor:
         if n_components is None:
             if self.whiten:
-                return torch.matmul(X, torch.sqrt(self.explained_variance_.unsqueeze(-1)) * self.components_) + self.mean_
+                return torch.matmul(X,
+                                    torch.sqrt(self.explained_variance_.unsqueeze(-1)) * self.components_) + self.mean_
             else:
                 return torch.matmul(X, self.components_) + self.mean_
         else:
             if self.whiten:
-                return torch.matmul(X[:, :n_components], torch.sqrt(self.explained_variance_[:n_components].unsqueeze(-1)) * self.components_[:n_components, :]) + self.mean_
+                return torch.matmul(X[:, :n_components], torch.sqrt(
+                    self.explained_variance_[:n_components].unsqueeze(-1)) * self.components_[:n_components,
+                                                                             :]) + self.mean_
             else:
                 return torch.matmul(X[:, :n_components], self.components_[:n_components, :]) + self.mean_
 
@@ -69,18 +90,6 @@ class PCAPytorch(_BasePCAPytorch):
     Based on sklearn's PCA class
     https://github.com/scikit-learn/scikit-learn/blob/37ac6788c9504ee409b75e5e24ff7d86c90c2ffb/sklearn/decomposition/_pca.py#L116
     """
-    def __init__(
-        self,
-        n_components: int = None,
-        *,
-        device: Union[str, torch.device] = None,
-        whiten: bool = False,
-        tol: float = 0.0,
-    ):
-        self.n_components = n_components
-        self.whiten = whiten
-        self.tol = tol
-        self.device = device
 
     def fit(self, X: torch.Tensor) -> None:
         self.n_samples_, self.n_features_ = X.shape
@@ -94,10 +103,14 @@ class PCAPytorch(_BasePCAPytorch):
         u, v_h = svd_flip(u, v_h)
 
         self.components_ = v_h
-        self.explained_variance_ = (s**2) / (self.n_samples_ - 1)
+        self.explained_variance_ = (s ** 2) / (self.n_samples_ - 1)
         total_var = torch.var(X, dim=0, unbiased=False)
         self.explained_variance_ratio_ = self.explained_variance_ / total_var.sum()
         self.singular_values_ = s
+        if self.n_components_ < X.shape[1]:
+            self.noise_variance_ = self.explained_variance_[self.n_components_:].mean()
+        else:
+            self.noise_variance_ = 0.0
 
 
 class IncrementalPCAPytorch(_BasePCAPytorch):
@@ -106,24 +119,12 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
     https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.IncrementalPCA.html
     """
 
-    def __init__(self, n_components: Optional[int] = None,
-                 whiten: bool = False, device: Optional[str] = None):
-        self.n_components = n_components
-        self.whiten = whiten
-        self.device = device
+    def __init__(self, *args, **kwargs):
+        super(IncrementalPCAPytorch, self).__init__(*args, **kwargs)
 
         self._initialized: bool = False
-        self._batch_size: int = None
-        self._n_feats: int = None
-
-        self.mean_: torch.Tensor = None
-        self.var_: torch.Tensor = None
-        self.n_samples_seen_: int = None
-        self.components_: torch.Tensor = None
-        self.explained_variance_: torch.Tensor = None
-        self.explained_variance_ratio_: torch.Tensor = None
-        self.singular_values_: torch.Tensor = None
-        self.noise_variance_: torch.Tensor = None
+        self._batch_size = None
+        self.n_samples_seen_ = None
 
     def fit_partial(self, X: torch.Tensor) -> None:
         X = X.to(self.device)
@@ -173,11 +174,11 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         assert X.ndim == 2
 
         batch_size, n_feats = X.shape
-        if self.n_components is None:
+        if self.n_components_ is None:
             self.n_components = min(batch_size, n_feats)
         else:
             assert 1 <= self.n_components <= min(batch_size, n_feats)
-        self._batch_size, self._n_feats = n_feats, batch_size
+        self._batch_size, self.n_features_ = batch_size, n_feats
 
         self.mean_ = torch.zeros(n_feats).to(self.device)
         self.var_ = torch.zeros(n_feats).to(self.device)
@@ -203,11 +204,11 @@ class IncrementalPCAPytorch(_BasePCAPytorch):
         last_unnormalized_var = self.var_ * self.n_samples_seen_
         last_over_new_n_samples = max(self.n_samples_seen_ / X_n_samples, 1e-7)
         new_unnormalized_var = (
-            last_unnormalized_var
-            + X_unnormalized_var
-            + last_over_new_n_samples
-            / new_n_samples_seen
-            * (last_sum / last_over_new_n_samples - X_sum) ** 2
+                last_unnormalized_var
+                + X_unnormalized_var
+                + last_over_new_n_samples
+                / new_n_samples_seen
+                * (last_sum / last_over_new_n_samples - X_sum) ** 2
         )
         new_var = new_unnormalized_var / new_n_samples_seen
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from brainio.stimuli import StimulusSet
 from model_tools.activations import KerasWrapper, PytorchWrapper, TensorflowSlimWrapper
 from model_tools.activations.core import flatten
-from model_tools.activations.pca import LayerPCA
+from model_tools.activations.hooks import LayerPCA
 
 
 def unique_preserved_order(a):
@@ -173,7 +173,7 @@ def test_from_image_path(model_ctr, layers, image_name, pca_components, logits):
 
     activations_extractor = model_ctr()
     if pca_components:
-        LayerPCA.hook(activations_extractor, pca_components)
+        LayerPCA.hook(activations_extractor, n_components=pca_components)
     activations = activations_extractor.from_paths(stimuli_paths=stimuli_paths,
                                                    layers=layers if not logits else None)
 
@@ -205,7 +205,7 @@ def test_from_stimulus_set(model_ctr, layers, pca_components):
 
     activations_extractor = model_ctr()
     if pca_components:
-        LayerPCA.hook(activations_extractor, pca_components)
+        LayerPCA.hook(activations_extractor, n_components=pca_components)
     activations = activations_extractor.from_stimulus_set(stimulus_set, layers=layers, stimuli_identifier=False)
 
     assert activations is not None
