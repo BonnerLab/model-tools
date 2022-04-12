@@ -103,14 +103,14 @@ class PCAPytorch(_BasePCAPytorch):
 
         u, s, v_h = torch.linalg.svd(X, full_matrices=False)
         u, v_h = svd_flip(u, v_h)
+        explained_variance = (s ** 2) / (self.n_samples_ - 1)
 
-        self.components_ = v_h
-        self.explained_variance_ = (s ** 2) / (self.n_samples_ - 1)
-        total_var = torch.var(X, dim=0, unbiased=False)
-        self.explained_variance_ratio_ = self.explained_variance_ / total_var.sum()
-        self.singular_values_ = s
+        self.components_ = v_h[:self.n_components_]
+        self.explained_variance_ = explained_variance[:self.n_components_]
+        self.explained_variance_ratio_ = (explained_variance / explained_variance.sum())[:self.n_components_]
+        self.singular_values_ = s[:self.n_components_]
         if self.n_components_ < X.shape[1]:
-            self.noise_variance_ = self.explained_variance_[self.n_components_:].mean()
+            self.noise_variance_ = explained_variance[self.n_components_:].mean()
         else:
             self.noise_variance_ = 0.0
 
