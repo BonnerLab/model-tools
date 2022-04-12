@@ -50,11 +50,11 @@ class ActivationsExtractorHelper:
         :param stimuli_identifier: a stimuli identifier for the stored results file.
             False to disable saving. None to use `stimulus_set.identifier`
         '''
-        if stimuli_identifier is None:
+        if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
             stimuli_identifier = stimulus_set.identifier
         for hook in self._stimulus_set_hooks.copy().values():  # copy to avoid stale handles
             stimulus_set = hook(stimulus_set)
-        stimuli_paths = [stimulus_set.get_image(image_id) for image_id in stimulus_set['image_id']]
+        stimuli_paths = [str(stimulus_set.get_image(image_id)) for image_id in stimulus_set['image_id']]
         activations = self.from_paths(stimuli_paths=stimuli_paths, layers=layers, stimuli_identifier=stimuli_identifier)
         activations = attach_stimulus_set_meta(activations, stimulus_set)
         return activations
@@ -62,12 +62,13 @@ class ActivationsExtractorHelper:
     def from_paths(self, stimuli_paths, layers, stimuli_identifier=None):
         if layers is None:
             layers = ['logits']  # Output layer
+        elif len(layers) == 0:
+            raise ValueError("No layers passed to retrieve activations from")
         layers = list(set(layers))  # Remove any duplicates
 
         # In case stimuli paths are duplicates (e.g. multiple trials), we first reduce them to only the paths that need
         # to be run individually, compute activations for those, and then expand the activations to all paths again.
         # This is done here, before storing, so that we only store the reduced activations.
-        stimuli_paths = paths_to_strings(stimuli_paths)     # Convert any Path datatypes to strings
         reduced_paths = self._reduce_paths(stimuli_paths)
 
         if not self.identifier or not stimuli_identifier:  # Clear saved file after obtaining activations
@@ -207,7 +208,7 @@ class ActivationsExtractorHelper:
 
     def _package(self, layer_activations, stimuli_paths) -> NeuroidAssembly:
         shapes = [a.shape for a in layer_activations.values()]
-        self._logger.debug('Activations shapes: {}'.format(shapes))
+        self._logger.debug(f'Activations shapes: {shapes}')
         self._logger.debug('Packaging individual layers')
         layer_assemblies = [self._package_layer(single_layer_activations, layer=layer, stimuli_paths=stimuli_paths) for
                             layer, single_layer_activations in tqdm(layer_activations.items(), desc='layer packaging', leave=False)]
@@ -215,7 +216,7 @@ class ActivationsExtractorHelper:
         # complication: (non)neuroid_coords are taken from the structure of layer_assemblies[0] i.e. the 1st assembly;
         # using these names/keys for all assemblies results in KeyError if the first layer contains flatten_coord_names
         # (see _package_layer) not present in later layers, e.g. first layer = conv, later layer = transformer layer
-        self._logger.debug('Merging layer assemblies')
+        self._logger.debug(f'Merging {len(layer_assemblies)} layer assemblies')
         model_assembly = np.concatenate([a.values for a in layer_assemblies],
                                         axis=layer_assemblies[0].dims.index('neuroid'))
         nonneuroid_coords = {coord: (dims, values) for coord, dims, values in walk_coords(layer_assemblies[0])
@@ -274,7 +275,6 @@ class ActivationsExtractorHelper:
                 identifier += f'-{hook.identifier}'
         return identifier
 
-
     def insert_attrs(self, wrapper):
         wrapper.from_stimulus_set = self.from_stimulus_set
         wrapper.from_paths = self.from_paths
@@ -301,15 +301,6 @@ def change_dict(d, change_function, keep_name=False, multithread=False):
     return results
 
 
-def paths_to_strings(paths):
-    if len(paths) == 0 or isinstance(paths[0], str):
-        return paths
-    elif isinstance(paths[0], pathlib.Path):
-        return [str(path) for path in paths]
-    else:
-        raise ValueError(f'"paths" elements must be of type str of Path, but were of type: {type(paths[0])}')
-
-
 def lstrip_local(path):
     parts = path.split(os.sep)
     try:
@@ -322,7 +313,7 @@ def lstrip_local(path):
 
 def attach_stimulus_set_meta(assembly, stimulus_set):
     # Make sure stimulus paths are correct
-    stimulus_paths = [stimulus_set.get_image(image_id) for image_id in stimulus_set['image_id']]
+    stimulus_paths = [str(stimulus_set.get_image(image_id)) for image_id in stimulus_set['image_id']]
     stimulus_paths = [lstrip_local(path) for path in stimulus_paths]
     assembly_paths = [lstrip_local(path) for path in assembly['stimulus_path'].values]
     assert (np.array(assembly_paths) == np.array(stimulus_paths)).all()

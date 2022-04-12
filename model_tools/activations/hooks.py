@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import logging
 import os
-from random import random
 from typing import Optional, Union, Iterable, Dict
 
 import h5py
@@ -65,7 +64,7 @@ class LayerGlobalMaxPool2d(LayerHookBase):
     def layer_apply(self, layer: str, activations: np.ndarray) -> np.ndarray:
         if activations.ndim != 4:
             return activations
-        return activations.max(axis=(2, 3))
+        return np.max(activations, axis=(2, 3))
 
 
 class LayerRandomProjection(LayerHookBase):
@@ -130,16 +129,7 @@ class LayerPCA(LayerHookBase):
         self._layer_pcas = {}
 
     def setup(self, batch_activations) -> None:
-        self._ensure_initialized(batch_activations.keys())
-    
-    def layer_apply(self, layer: str, activations: np.ndarray) -> np.ndarray:
-        pca = self._layer_pcas[layer]
-        activations = flatten(activations)
-        if pca is None:
-            return activations
-        return pca.transform(torch.from_numpy(activations).to(self._device))
-
-    def _ensure_initialized(self, layers):
+        layers = batch_activations.keys()
         missing_layers = [layer for layer in layers if layer not in self._layer_pcas]
         if len(missing_layers) == 0:
             return
@@ -149,6 +139,13 @@ class LayerPCA(LayerHookBase):
                                 force=self._force,
                                 stimuli_identifier=self._stimuli_identifier)
         self._layer_pcas = {**self._layer_pcas, **layer_pcas}
+    
+    def layer_apply(self, layer: str, activations: np.ndarray) -> np.ndarray:
+        pca = self._layer_pcas[layer]
+        activations = flatten(activations)
+        if pca is None:
+            return activations
+        return pca.transform(torch.from_numpy(activations).to(self._device))
 
     @store_dict(dict_key='layers', identifier_ignore=['layers'])
     def _pcas(self, identifier, layers, n_components, force, stimuli_identifier) -> Dict[str, BasePCA]:
