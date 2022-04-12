@@ -1,5 +1,4 @@
 import os
-import pathlib
 import uuid
 
 import functools
@@ -8,7 +7,7 @@ from collections import OrderedDict
 from multiprocessing.pool import ThreadPool
 
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from brainio.assemblies import NeuroidAssembly, walk_coords
 from brainio.stimuli import StimulusSet
