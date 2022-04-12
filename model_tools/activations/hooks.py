@@ -33,8 +33,8 @@ class LayerHookBase(ABC):
                            multithread=os.getenv('MT_MULTITHREAD', '1') == '1')
 
     @classmethod
-    def hook(cls, activations_extractor: ActivationsModel, **kwargs):
-        hook = cls(activations_extractor, **kwargs)
+    def hook(cls, activations_extractor: ActivationsModel, identifier: Optional[str] = None, **kwargs):
+        hook = cls(activations_extractor=activations_extractor, identifier=identifier, **kwargs)
         assert not cls.is_hooked(activations_extractor), f"{cls.__name__} is already hooked"
         handle = activations_extractor.register_batch_activations_hook(hook)
         hook.handle = handle
@@ -75,7 +75,7 @@ class LayerRandomProjection(LayerHookBase):
                  identifier: Optional[str] = None,
                  **kwargs):
         if identifier is None:
-            identifier = f'randproj_ncomponents={n_components}'
+            identifier = f'randproj_ncomponents={n_components}_force={force}'
 
         super(LayerRandomProjection, self).__init__(*args, **kwargs, identifier=identifier)
         self._n_components = n_components
@@ -110,10 +110,12 @@ class LayerPCA(LayerHookBase):
             # Default to ImageNet validation with 1 image per class
             stimuli = _get_imagenet_val(n_components)
             stimuli_identifier = 'brainscore-imagenetval'
-        if not isinstance(stimuli, StimulusSet) and not stimuli_identifier:
-            raise ValueError('If passing a list of paths for stimuli, you must provide a stimuli_identifier')
-        if isinstance(stimuli, StimulusSet) and not stimuli_identifier:
+        if isinstance(stimuli, StimulusSet) and stimuli_identifier is None and hasattr(stimuli, 'identifier'):
             stimuli_identifier = stimuli.identifier
+        if stimuli_identifier is None:
+            raise ValueError('If passing a list of paths for stimuli '
+                             'or a StimulusSet without an identifier attribute, '
+                             'you must provide a stimuli_identifier')
 
         if identifier is None:
             identifier = f'pca_ncomponents={n_components}_force={force}_stimuli_identifier={stimuli_identifier}'
@@ -172,7 +174,7 @@ class LayerPCA(LayerHookBase):
                 pca = PCAPytorch(n_components_, device=self._device)
                 pca.fit(torch.from_numpy(activations).to(self._device))
             else:
-                pca = IncrementalPCAPytorch(device=self._device)
+                pca = IncrementalPCAPytorch(n_components_, device=self._device)
                 for i in range(0, activations.shape[0], self._batch_size):
                     activations_batch = torch.from_numpy(activations[i:i + self._batch_size]).to(self._device)
                     pca.fit_partial(activations_batch)

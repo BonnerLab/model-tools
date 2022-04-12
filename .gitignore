@@ -1,4 +1,5 @@
 model_tools.egg-info
 tests/analyses/result_caching
 tests/brain_transformation/result_caching
+tests/activations/result_caching
 *.pyc
