@@ -62,6 +62,7 @@ class _BasePCAPytorch:
         return precision
 
     def transform(self, X: torch.Tensor) -> torch.Tensor:
+        X = X.to(self.device)
         if self.mean_ is not None:
             X = X - self.mean_
         X_transformed = torch.matmul(X, self.components_.transpose(0, 1))
