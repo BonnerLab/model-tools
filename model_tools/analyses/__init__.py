@@ -111,10 +111,11 @@ class ModelActivationsAnalysis(ABC):
                                                     stimuli_identifier=stimuli_identifier)
 
         self._logger.debug('Performing analyses')
-        progress = tqdm(total=len(layer_activations), desc="layer analyses")
+        layers = np.unique(layer_activations['layer'])
+        progress = tqdm(total=len(layers), desc="layer analyses")
 
         layer_results = OrderedDict()
-        for layer in np.unique(layer_activations['layer']):
+        for layer in layers:
             activations = layer_activations.sel(layer=layer)
             layer_results[layer] = self.analysis_func(assembly=activations, **kwargs)
             progress.update(1)
